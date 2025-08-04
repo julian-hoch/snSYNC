@@ -3,7 +3,7 @@
 ;; Author: Julian Hoch
 ;; Maintainer: Julian Hoch
 ;; Version: 0.1.0
-;; Package-Requires: (ServiceNow.el)
+;; Package-Requires: (servicenow)
 ;; Homepage: https://github.com/julian-hoch/snsync
 ;; Keywords: servicenow
 

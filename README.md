@@ -1,18 +1,18 @@
 
 # Table of Contents
 
-1.  [Quick Start](#orga7779df)
+1.  [Quick Start](#orgc9111a8)
 
 This package allows ServiceNow developers edit their Script Includes, UI Scripts (and other artifacts) directly in Emacs.  It provides a configurable way to synchronize ServiceNow records with local files.
 
 
-<a id="orga7779df"></a>
+<a id="orgc9111a8"></a>
 
 # Quick Start
 
 This package depends on [ServiceNow.el](https://github.com/julian-hoch/ServiceNow.el), so please install and configure that first.  Then, install this package, e.g. with:
 
-    (use-package servicenow
+    (use-package snsync
       :straight (:host github :repo "julian-hoch/snsync"))
 
 To download a Script Include or UI Script in a (temporary) buffer, use command `snsync-download-record`.
