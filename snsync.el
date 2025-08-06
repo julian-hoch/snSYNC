@@ -188,6 +188,7 @@ overwritten.  If BUFFER is provided, use that buffer instead of creating a new o
                   snsync-current-extension extension
                   snsync-current-display-value display-value
                   snsync-current-sys-id sys-id)
+      (snsync--set-content-hash)
       (when use-file-locals
         (snsync--set-file-local-variables))
       (when snsync-auto-narrow-to-content
@@ -331,7 +332,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "^\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
+  "[[:space:]]*\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
@@ -350,6 +351,7 @@ specified, use the current buffer."
                         content))
          (fields (list (cons field transformed))))
     (sn-update-record table sys-id fields)
+    (snsync--set-content-hash)
     (message "Uploaded %s.%s:%s" table field sys-id)))
 
 ;;;; Buffer Misc Commands
@@ -359,12 +361,19 @@ specified, use the current buffer."
   "Display the current status of the buffer."
   (interactive)
   (if (snsync--buffer-connected-p)
-      (message "Current buffer: %s - %s.%s:%s in scope %s"
-               snsync-current-display-value
-               snsync-current-table
-               snsync-current-field
-               snsync-current-sys-id
-               snsync-current-scope)
+      (let* ((locally-changed (snsync--is-locally-modified-p))
+             (remote-changed (snsync--is-remote-modified-p))
+             (status (cond
+                      ((and locally-changed remote-changed) "Locally and remotely modified")
+                      (locally-changed "Locally modified")
+                      (remote-changed "Remotely modified")
+                      (t "Up to date"))))
+        (message "Table: %s, Field: %s, Sys-ID: %s, Scope: %s.  Status: %s"
+                 snsync-current-table
+                 snsync-current-field
+                 snsync-current-sys-id
+                 snsync-current-scope
+                 status))
     (message "This buffer is not associated with a ServiceNow record.")))
 
 ;;;###autoload
@@ -388,19 +397,6 @@ specified, use the current buffer."
   :type 'boolean
   :group 'snsync)
 
-(defvar snsync-current-scope nil
-  "The current ServiceNow scope being accessed in this buffer.")
-(defvar snsync-current-table nil
-  "The current ServiceNow table being accessed in this buffer.")
-(defvar snsync-current-field nil
-  "The current ServiceNow field being accessed in this buffer.")
-(defvar snsync-current-sys-id nil
-  "The current ServiceNow sys_id being accessed in this buffer.")
-(defvar snsync-current-display-value nil
-  "The current ServiceNow display value being accessed in this buffer.")
-(defvar snsync-current-extension nil
-  "The file extension to use for the current buffer.")
-  
 (put 'snsync-current-scope 'safe-local-variable
      (lambda (x) (or (null x) (stringp x))))
 (put 'snsync-current-table 'safe-local-variable
@@ -464,7 +460,8 @@ indicate subdirectories."
   (add-file-local-variable 'snsync-current-sys-id snsync-current-sys-id)
   (add-file-local-variable 'snsync-current-scope snsync-current-scope)
   (add-file-local-variable 'snsync-current-display-value snsync-current-display-value)
-  (add-file-local-variable 'snsync-current-extension snsync-current-extension))
+  (add-file-local-variable 'snsync-current-extension snsync-current-extension)
+  (add-file-local-variable 'snsync-content-hash snsync-content-hash))
 
 ;;;###autoload
 (defun snsync-get-file (&optional table field sys-id)
@@ -523,11 +520,70 @@ provided, use the default query for the field."
 
 ;; TODO sync all files (download / upload?)
 
-;; TODO all in one (dwim) command that downloads file or syncs open buffer; modified using prefix.
+;;;###autoload
+(defun snsync-dwim ()
+  "Synchronize the current buffer with the ServiceNow instance.  If there are no remote changes, upload the buffer.  If there are no local changes, download the buffer.  If there are both local and remote changes, prompt the user to resolve the conflict."
+  (interactive)
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let ((locally-changed (snsync--is-locally-modified-p))
+        (remote-changed (snsync--is-remote-modified-p)))
+    (cond
+        ((and locally-changed remote-changed)
+         (error "Both local and remote changes detected. Please resolve the conflict manually."))
+        ;; TODO add proper conflict resolution
+        (locally-changed
+         (snsync-upload-buffer)
+         (message "Local changes uploaded to ServiceNow."))
+        (remote-changed
+         (snsync-reload-buffer)
+         (message "Remote changes downloaded from ServiceNow."))
+        (t
+         (message "No changes detected. Buffer is up to date.")))))
 
 ;;; Conflict Detection
 
-;; TODO
+(defvar-local snsync-content-hash nil
+  "Hash of the buffer's data as of last synchronization.  Used to detect local modifications.")
+
+(put 'snsync-content-hash 'safe-local-variable
+     (lambda (x) (or (null x) (stringp x))))
+
+(defun snsync--get-buffer-hash ()
+  "Get a hash of the current buffer's content, excluding file-local variables."
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (save-restriction
+    (widen)
+    (snsync-narrow-to-content)
+        (secure-hash 'md5 (current-buffer))))
+
+(defun snsync--set-content-hash ()
+  "Set the content hash of the current buffer to the current content hash."
+  (setq-local snsync-content-hash (snsync--get-buffer-hash)))
+
+(defun snsync--is-locally-modified-p ()
+  "Check if the content of the current buffer has been modified since the last synchronization."
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (not (string= snsync-content-hash (snsync--get-buffer-hash))))
+
+(defun snsync--get-remote-hash ()
+  "Get the hash of the remote record's content."
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let ((table snsync-current-table)
+        (field snsync-current-field)
+        (sys-id snsync-current-sys-id))
+    (with-temp-buffer
+      (snsync--load-data-as-buffer table field sys-id nil (current-buffer))
+      (snsync--get-buffer-hash))))
+
+(defun snsync--is-remote-modified-p ()
+  "Check if the remote record has been modified since the last synchronization."
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+        (not (string= snsync-content-hash (snsync--get-remote-hash))))
 
 ;;; Conflict Resolution
 
