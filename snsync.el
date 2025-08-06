@@ -69,7 +69,17 @@
 used to display the name of the record.  Can be a field name, a list of
 field names, or a function that returns the content given the result
 hashtable."
-  :group 'snsync)
+  :group 'snsync
+  :type '(alist :key-type (cons string string)
+		:value-type (plist
+                             :options
+                                   ((:label string)
+                                    (:name-field (choice (string :tag "Primary name field")
+                                                         (repeat string)))
+                                    (:extension string)
+                                    (:scope string)
+                                    (:query string)
+                                    (:mode symbol)))))
 
 (defun snsync--get-field-metadata (table field)
   "Get metadata for TABLE and FIELD."
@@ -150,10 +160,10 @@ the relevant data as an alist, with keys 'display-value and 'content."
   (while (re-search-forward "\r\n" nil t)
     (replace-match "\n" nil t)))
          
-(defun snsync--load-data-as-buffer (table field sys-id &optional data)
+(defun snsync--load-data-as-buffer (table field sys-id &optional data buffer)
   "Load a record from TABLE with SYS-ID and save the value of FIELD as a
 new buffer.  If the buffer already exists, it content will be
-overwritten."
+overwritten.  If BUFFER is provided, use that buffer instead of creating a new one."
   (unless data
     (setq data (snsync--load-data table field sys-id)))
   (let* ((content (alist-get 'content data))
@@ -161,10 +171,12 @@ overwritten."
          (display-value (alist-get 'display-value data))
          (extension (snsync--get-field-extension table field))
          (buffer-name (snsync--propose-buffer-name table field sys-id display-value))
-         (buffer (get-buffer-create buffer-name)))
+         (buffer (or buffer (get-buffer-create buffer-name)))
+         (use-file-locals nil))
     (unless content
       (error "No content found for %s.%s:%s" table field sys-id))
     (set-buffer (switch-to-buffer buffer))
+    (setq use-file-locals snsync-file-locals)
     (save-excursion
       (erase-buffer)
       (insert content)
@@ -175,9 +187,30 @@ overwritten."
                   snsync-current-field field
                   snsync-current-extension extension
                   snsync-current-display-value display-value
-                  snsync-current-sys-id sys-id))))
+                  snsync-current-sys-id sys-id)
+      (when use-file-locals
+        (snsync--set-file-local-variables))
+      (when snsync-auto-narrow-to-content
+        (snsync-narrow-to-content)))))
 
 ;;; User Interface Helpers
+
+(defcustom snsync-auto-narrow-to-content nil
+  "If non-nil, automatically narrow the buffer to the content of the ServiceNow record."
+  :type 'boolean
+  :group 'snsync)
+
+(defun snsync-narrow-to-content ()
+  "Narrow the current buffer to the content of the ServiceNow record,
+excluding file-local variables."
+  (interactive)
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (save-excursion
+    (goto-char (point-min))
+    (when (re-search-forward snsync-local-var-regex nil t)
+    (narrow-to-region (point-min) (match-beginning 0)))))
+   
 
 (defun snsync--prompt-for-table-field ()
   "Prompt the user to select a table and field.  Returns a cons cell
@@ -244,6 +277,9 @@ If TABLE and FIELD are not provided, prompt the user to select them."
 (defvar-local snsync-current-extension nil
   "The file extension to use for the current buffer.")
 
+(defvar-local snsync-file-locals nil
+  "Whether the current buffer uses file local variables")
+
 ;;;; Buffer Helpers
 
 (defun snsync--propose-buffer-name (table field sys-id display-value)
@@ -262,7 +298,7 @@ If TABLE and FIELD are not provided, prompt the user to select them."
 ;;;; Downloading To Buffer
 
 ;;;###autoload
-(defun snsync-download-record (&optional table field sys-id)
+(defun snsync-download-buffer (&optional table field sys-id)
   "Open a record in a buffer.  If TABLE, FIELD and SYS-ID are not provided,
 prompt the user to select them."
   (interactive)
@@ -285,7 +321,7 @@ specified, use the current buffer."
   (let ((table snsync-current-table)
         (field snsync-current-field)
         (sys-id snsync-current-sys-id))
-    (snsync--load-data-as-buffer table field sys-id)))
+    (snsync--load-data-as-buffer table field sys-id nil (current-buffer))))
   
 ;;; Saving to the Instance
 
@@ -295,7 +331,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "^// Local Variables:\n\\(// [^\n]+\n\\)*"
+  "^\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
@@ -377,6 +413,8 @@ specified, use the current buffer."
      (lambda (x) (or (null x) (stringp x))))
 (put 'snsync-current-extension 'safe-local-variable
         (lambda (x) (or (null x) (stringp x))))
+(put 'snsync-file-locals 'safe-local-variable
+     (lambda (x) (or (null x) (booleanp x))))
 
 (defun snsync--construct-file-name (scope table field sys-id display-value extension)
   "Generate a file name for the file representing the data in SCOPE / TABLE / FIELD, for the given FIELD
@@ -418,7 +456,9 @@ indicate subdirectories."
   (interactive)
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
+  (setq-local snsync-file-locals t)
   (add-file-local-variable 'snsync-mode 1)
+  (add-file-local-variable 'snsync-file-locals t)
   (add-file-local-variable 'snsync-current-table snsync-current-table)
   (add-file-local-variable 'snsync-current-field snsync-current-field)
   (add-file-local-variable 'snsync-current-sys-id snsync-current-sys-id)
@@ -432,11 +472,12 @@ indicate subdirectories."
   "Download and save a ServiceNow record.  If TABLE,
 FIELD and SYS-ID are not provided, prompt the user to select them."
   (interactive)
-  (snsync-download-record table field sys-id)
+  (snsync-download-buffer table field sys-id)
   (when snsync-add-file-vars
     (snsync--set-file-local-variables))
   (snsync-save-buffer-to-file))
 
+;;;###autoload
 (defun snsync-get-all-files-of-table-field (&optional table field query)
   "Download and save all records of TABLE and FIELD matching QUERY.  If TABLE and
 FIELD are not provided, prompt the user to select them.  If QUERY is not
@@ -467,6 +508,7 @@ provided, use the default query for the field."
       (snsync-save-buffer-to-file))))
 
 
+;;;###autoload
 (defun snsync-get-all-files ()
   ;; TODO potentially only load changed files
   "Synchronize all records of all tables and fields defined in `snsync-fields`."
@@ -480,6 +522,14 @@ provided, use the default query for the field."
 ;; TODO sync all files (download / upload?)
 
 ;; TODO all in one (dwim) command that downloads file or syncs open buffer; modified using prefix.
+
+;;; Conflict Detection
+
+;; TODO
+
+;;; Conflict Resolution
+
+;; TODO
 
 ;;; Minor Mode
 
