@@ -475,6 +475,8 @@ FIELD and SYS-ID are not provided, prompt the user to select them."
   (snsync-download-buffer table field sys-id)
   (when snsync-add-file-vars
     (snsync--set-file-local-variables))
+  (when snsync-auto-narrow-to-content
+    (snsync-narrow-to-content))
   (snsync-save-buffer-to-file))
 
 ;;;###autoload
