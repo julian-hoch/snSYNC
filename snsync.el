@@ -333,7 +333,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
+  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:[.\n]+"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
