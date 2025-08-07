@@ -343,17 +343,18 @@ specified, use the current buffer."
   (interactive)
   (when buffer
     (switch-to-buffer buffer))
-  (let* ((sys-id snsync-current-sys-id)
-         (table snsync-current-table)
-         (field snsync-current-field)
-         (content (buffer-substring-no-properties (point-min) (point-max)))
-         (transformed (if snsync-strip-file-vars
-                          (replace-regexp-in-string snsync-local-var-regex "" content)
-                        content))
-         (fields (list (cons field transformed))))
-    (sn-update-record table sys-id fields)
-    (snsync--set-content-hash)
-    (message "Uploaded %s.%s:%s" table field sys-id)))
+  (save-restriction
+    (widen)
+    (when snsync-strip-file-vars
+      (snsync-narrow-to-content))
+    (let* ((sys-id snsync-current-sys-id)
+           (table snsync-current-table)
+           (field snsync-current-field)
+           (content (buffer-substring-no-properties (point-min) (point-max)))
+           (fields (list (cons field content))))
+      (sn-update-record table sys-id fields)
+      (snsync--set-content-hash)
+      (message "Uploaded %s.%s:%s" table field sys-id))))
 
 ;;;; Buffer Misc Commands
 
