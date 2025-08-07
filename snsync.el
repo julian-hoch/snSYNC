@@ -166,7 +166,7 @@ new buffer.  If the buffer already exists, it content will be
 overwritten.  If BUFFER is provided, use that buffer instead of creating a new one."
   (unless data
     (setq data (snsync--load-data table field sys-id)))
-  (let* ((content (alist-get 'content data))
+  (let* ((content (string-trim (alist-get 'content data)))
          (scope (alist-get 'scope data))
          (display-value (alist-get 'display-value data))
          (extension (snsync--get-field-extension table field))
@@ -191,6 +191,7 @@ overwritten.  If BUFFER is provided, use that buffer instead of creating a new o
       (snsync--set-content-hash)
       (when use-file-locals
         (snsync--set-file-local-variables))
+      (snsync-mode 1)
       (when snsync-auto-narrow-to-content
         (snsync-narrow-to-content)))))
 
@@ -332,7 +333,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "[[:space:]]*\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
+  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:\\(\n\\| -->\n\\).*?"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
