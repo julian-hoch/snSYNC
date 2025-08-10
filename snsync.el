@@ -163,7 +163,8 @@ the relevant data as an alist, with keys 'display-value and 'content."
 (defun snsync--load-data-as-buffer (table field sys-id &optional data buffer)
   "Load a record from TABLE with SYS-ID and save the value of FIELD as a
 new buffer.  If the buffer already exists, it content will be
-overwritten.  If BUFFER is provided, use that buffer instead of creating a new one."
+overwritten.  If BUFFER is provided, use that buffer instead of creating
+a new one.  Return the buffer containing the data."
   (unless data
     (setq data (snsync--load-data table field sys-id)))
   (let* ((content (string-trim (alist-get 'content data)))
@@ -175,25 +176,26 @@ overwritten.  If BUFFER is provided, use that buffer instead of creating a new o
          (use-file-locals nil))
     (unless content
       (error "No content found for %s.%s:%s" table field sys-id))
-    (set-buffer (switch-to-buffer buffer))
     (setq use-file-locals snsync-file-locals)
-    (save-excursion
-      (erase-buffer)
-      (insert content)
-      (snsync--fix-line-endings)
-      (funcall (snsync--get-field-mode table field))
-      (setq-local snsync-current-table table
-                  snsync-current-scope scope
-                  snsync-current-field field
-                  snsync-current-extension extension
-                  snsync-current-display-value display-value
-                  snsync-current-sys-id sys-id)
-      (snsync--set-content-hash)
-      (when use-file-locals
-        (snsync--set-file-local-variables))
-      (snsync-mode 1)
-      (when snsync-auto-narrow-to-content
-        (snsync-narrow-to-content)))))
+    (with-current-buffer buffer
+      (save-excursion
+        (erase-buffer)
+        (insert content)
+        (snsync--fix-line-endings)
+        (funcall (snsync--get-field-mode table field))
+        (setq-local snsync-current-table table
+                    snsync-current-scope scope
+                    snsync-current-field field
+                    snsync-current-extension extension
+                    snsync-current-display-value display-value
+                    snsync-current-sys-id sys-id)
+        (snsync--set-content-hash)
+        (when use-file-locals
+          (snsync--set-file-local-variables))
+        (snsync-mode 1)
+        (when snsync-auto-narrow-to-content
+          (snsync-narrow-to-content))))
+    buffer))
 
 ;;; User Interface Helpers
 
@@ -309,9 +311,9 @@ prompt the user to select them."
       (setq table (plist-get record :table)
             field (plist-get record :field)
             sys-id (plist-get record :sys-id))))
-  (snsync--load-data-as-buffer table field sys-id))
+  (switch-to-buffer (snsync--load-data-as-buffer table field sys-id)))
 
-;;;###autolaod
+;;;###autoload
 (defun snsync-reload-buffer (&optional buffer)
   "Reload the BUFFER from the ServiceNow instance.  If BUFFER is not
 specified, use the current buffer."
@@ -532,8 +534,7 @@ provided, use the default query for the field."
         (remote-changed (snsync--is-remote-modified-p)))
     (cond
         ((and locally-changed remote-changed)
-         (error "Both local and remote changes detected. Please resolve the conflict manually."))
-        ;; TODO add proper conflict resolution
+         (snsync-resolve-conflict))
         (locally-changed
          (snsync-upload-buffer)
          (message "Local changes uploaded to ServiceNow."))
@@ -570,6 +571,9 @@ provided, use the default query for the field."
     (error "This buffer is not associated with a ServiceNow record."))
   (not (string= snsync-content-hash (snsync--get-buffer-hash))))
 
+(defvar snsync--temp-buffer-name "*snsync-temp*"
+  "Temporary buffer name used for loading data from ServiceNow.")
+
 (defun snsync--get-remote-hash ()
   "Get the hash of the remote record's content."
   (unless (snsync--buffer-connected-p)
@@ -577,19 +581,74 @@ provided, use the default query for the field."
   (let ((table snsync-current-table)
         (field snsync-current-field)
         (sys-id snsync-current-sys-id))
-    (with-temp-buffer
+    (with-current-buffer (get-buffer-create snsync--temp-buffer-name)
       (snsync--load-data-as-buffer table field sys-id nil (current-buffer))
       (snsync--get-buffer-hash))))
+
+(defun snsync--temp-remote-buffer-name ()
+  "Create a temporary buffer name for the remote record's content."
+        (format "*%s:REMOTE*" (buffer-name)))
 
 (defun snsync--is-remote-modified-p ()
   "Check if the remote record has been modified since the last synchronization."
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
-        (not (string= snsync-content-hash (snsync--get-remote-hash))))
+  (let ((snsync--temp-buffer-name (snsync--temp-remote-buffer-name)))
+    (not (string= snsync-content-hash (snsync--get-remote-hash)))))
 
 ;;; Conflict Resolution
 
-;; TODO
+(defun snsync--merge-buffers ()
+  "Merge the current buffer with the temporary buffer containing the remote record's content."
+  ;; TODO set up some hooks to process the result; potentially mark the current buffer
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let ((diff-buffer (get-buffer snsync--temp-buffer-name)))
+    (unless diff-buffer
+      (error "Temporary buffer for diffing does not exist."))
+    (ediff-merge-buffers (current-buffer) diff-buffer)))
+
+(defun snsync--diff-buffers ()
+  "Diff the current buffer with the temporary buffer containing the remote record's content."
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let* ((snsync--temp-buffer-name (snsync--temp-remote-buffer-name))
+         (diff-buffer (get-buffer snsync--temp-buffer-name)))
+    (unless diff-buffer
+      (error "Temporary buffer for diffing does not exist."))
+    (diff-buffers (current-buffer) diff-buffer)))
+
+(defun snsync--prompt-conflict-resolution ()
+  "Prompt the user to resolve a conflict between local and remote changes."
+ (let ((read-answer-short t)) 
+   (read-answer "Local changes detected.  Remote changes detected.  How do you want to
+resolve the conflict? "
+                '(("upload" ?U "Upload local changes")
+                  ("download" ?D "Download remote changes")
+                  ("diff" ?d "Diff local and remote changes")
+                  ("merge" ?m "Merge local and remote changes")
+                  ("quit" ?q "Quit without resolving")))))
+
+(defun snsync-resolve-conflict ()
+  "Resolve a conflict between local and remote changes in the current buffer."
+  (interactive)
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let ((resolution (snsync--prompt-conflict-resolution)))
+    (cond
+     ((string= resolution "upload")
+      (snsync-upload-buffer))
+     ((string= resolution "download")
+      (snsync-reload-buffer))
+     ((string= resolution "diff")
+      (snsync--diff-buffers))
+     ((string= resolution "merge")
+      (snsync--merge-buffers))
+     ((string= resolution "quit")
+      (message "Conflict resolution aborted."))
+     (t
+      (error "Unknown resolution option: %s" resolution)))))
+
 
 ;;; Minor Mode
 
@@ -599,10 +658,14 @@ provided, use the default query for the field."
   :global nil
   :group 'snsync
   :lighter "snSYNC"
+  :after-hook
+  (when (and snsync-mode snsync-auto-narrow-to-content)
+    (snsync-narrow-to-content))
   :keymap (make-sparse-keymap))
 
 (put 'snsync-mode 'safe-local-variable
      (lambda (x) (or (null x) (eq x 1))))
+
 
 (provide 'snsync)
 
