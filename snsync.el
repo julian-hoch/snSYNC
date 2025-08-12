@@ -261,7 +261,6 @@ If TABLE and FIELD are not provided, prompt the user to select them."
 
 ;;;; Buffer Local Variables
 ;; These variables maintain state for buffers corresponding to ServiceNow artifacts.
-;; TODO potentially add updated timestamp
 
 (defvar-local snsync-current-table nil
   "The current ServiceNow table being accessed in this buffer.")
@@ -469,7 +468,6 @@ indicate subdirectories."
 
 ;;;###autoload
 (defun snsync-get-file (&optional table field sys-id)
-;; TODO check for local changes before overwriting
   "Download and save a ServiceNow record.  If TABLE,
 FIELD and SYS-ID are not provided, prompt the user to select them."
   (interactive)
@@ -534,7 +532,7 @@ provided, use the default query for the field."
         (remote-changed (snsync--is-remote-modified-p)))
     (cond
         ((and locally-changed remote-changed)
-         (snsync-resolve-conflict))
+         (snsync-resolve-conflicts))
         (locally-changed
          (snsync-upload-buffer)
          (message "Local changes uploaded to ServiceNow."))
@@ -598,15 +596,63 @@ provided, use the default query for the field."
 
 ;;; Conflict Resolution
 
+(defcustom snsync-save-merge-window-config t
+  "If non-nil, save the window configuration before merging buffers."
+  :type 'boolean
+  :group 'snsync)
+
+(defvar-local snsync-pre-merge-window-config nil
+  "Window configuration before merging buffers.  Used to restore the window layout after merging.")
+
 (defun snsync--merge-buffers ()
   "Merge the current buffer with the temporary buffer containing the remote record's content."
-  ;; TODO set up some hooks to process the result; potentially mark the current buffer
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
-  (let ((diff-buffer (get-buffer snsync--temp-buffer-name)))
+  (let* ((snsync--temp-buffer-name (snsync--temp-remote-buffer-name))
+        (diff-buffer (get-buffer snsync--temp-buffer-name)))
     (unless diff-buffer
       (error "Temporary buffer for diffing does not exist."))
+    (when snsync-save-merge-window-config
+      (setq-local snsync-pre-merge-window-config (current-window-configuration)))
+    (snsync-narrow-to-content)
     (ediff-merge-buffers (current-buffer) diff-buffer)))
+
+(defun snsync--apply-merge ()
+  "Take the output of `ediff-merge-buffers' and apply it to the local
+buffer, then send to the instance.
+Runs when ediff merge finishes (if hook is set up)." 
+  (let ((local-buffer ediff-buffer-A)
+        (remote-buffer ediff-buffer-B)
+        (merged-buffer ediff-buffer-C)
+        (is-connected
+         (with-current-buffer ediff-buffer-A (snsync--buffer-connected-p)))
+        (previous-window-config
+         (with-current-buffer ediff-buffer-A snsync-pre-merge-window-config))
+        (result))
+    (set-buffer remote-buffer)
+    (setq buffer-read-only nil)
+    (set-buffer local-buffer)
+    (setq buffer-read-only nil)
+    (when is-connected
+      (if (not (yes-or-no-p "Apply merges?"))
+          (progn
+            (when snsync-save-merge-window-config
+              (set-window-configuration snsync-pre-merge-window-config))
+            (message "Merges not applied."))
+        ;; TODO ideally we would check if the result buffer still has conflict markers
+        (set-buffer merged-buffer)
+        (setq result (buffer-substring-no-properties (point-min) (point-max)))
+        (set-buffer local-buffer)
+        (erase-buffer)
+        (insert result)
+        (when snsync-file-locals
+          (snsync--set-file-local-variables))
+        (when snsync-auto-narrow-to-content
+          (snsync-narrow-to-content))
+        (when snsync-save-merge-window-config
+          (set-window-configuration snsync-pre-merge-window-config))
+        (snsync-upload-buffer)
+        (message "Merges applied.")))))
 
 (defun snsync--diff-buffers ()
   "Diff the current buffer with the temporary buffer containing the remote record's content."
@@ -623,13 +669,14 @@ provided, use the default query for the field."
  (let ((read-answer-short t)) 
    (read-answer "Local changes detected.  Remote changes detected.  How do you want to
 resolve the conflict? "
-                '(("upload" ?U "Upload local changes")
-                  ("download" ?D "Download remote changes")
+                '(("upload" ?\C-u "Upload local changes")
+                  ("download" ?\C-d "Download remote changes")
                   ("diff" ?d "Diff local and remote changes")
                   ("merge" ?m "Merge local and remote changes")
+                  ("open" ?o "Open remote record in browser")
                   ("quit" ?q "Quit without resolving")))))
 
-(defun snsync-resolve-conflict ()
+(defun snsync-resolve-conflicts ()
   "Resolve a conflict between local and remote changes in the current buffer."
   (interactive)
   (unless (snsync--buffer-connected-p)
@@ -644,6 +691,8 @@ resolve the conflict? "
       (snsync--diff-buffers))
      ((string= resolution "merge")
       (snsync--merge-buffers))
+     ((string= resolution "open")
+      (snsync-open-in-browser))
      ((string= resolution "quit")
       (message "Conflict resolution aborted."))
      (t
