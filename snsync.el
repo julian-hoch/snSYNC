@@ -601,6 +601,11 @@ provided, use the default query for the field."
   :type 'boolean
   :group 'snsync)
 
+(defcustom snsync-auto-upload-after-merge t
+  "If non-nil, automatically upload the buffer after merging."
+  :type 'boolean
+  :group 'snsync)
+
 (defvar-local snsync-pre-merge-window-config nil
   "Window configuration before merging buffers.  Used to restore the window layout after merging.")
 
@@ -651,8 +656,14 @@ Runs when ediff merge finishes (if hook is set up)."
           (snsync-narrow-to-content))
         (when snsync-save-merge-window-config
           (set-window-configuration snsync-pre-merge-window-config))
-        (snsync-upload-buffer)
+        (when snsync-auto-upload-after-merge
+          (snsync-upload-buffer))
         (message "Merges applied.")))))
+
+(defcustom snsync-diff-function 'diff-buffers
+  "Function to use for diffing buffers.  Default is `diff-buffers'."
+  :type 'function
+  :group 'snsync)
 
 (defun snsync--diff-buffers ()
   "Diff the current buffer with the temporary buffer containing the remote record's content."
@@ -662,7 +673,7 @@ Runs when ediff merge finishes (if hook is set up)."
          (diff-buffer (get-buffer snsync--temp-buffer-name)))
     (unless diff-buffer
       (error "Temporary buffer for diffing does not exist."))
-    (diff-buffers (current-buffer) diff-buffer)))
+    (funcall snsync-diff-function (current-buffer) diff-buffer)))
 
 (defun snsync--prompt-conflict-resolution ()
   "Prompt the user to resolve a conflict between local and remote changes."
