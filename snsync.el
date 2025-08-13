@@ -334,7 +334,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:[.\n]+"
+  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:\\(\n\\|.\\)+"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
@@ -355,6 +355,8 @@ specified, use the current buffer."
            (fields (list (cons field content))))
       (sn-update-record table sys-id fields)
       (snsync--set-content-hash)
+      (when snsync-file-locals
+        (snsync--set-file-local-variables))
       (message "Uploaded %s.%s:%s" table field sys-id))))
 
 ;;;; Buffer Misc Commands
@@ -541,6 +543,24 @@ provided, use the default query for the field."
          (message "Remote changes downloaded from ServiceNow."))
         (t
          (message "No changes detected. Buffer is up to date.")))))
+
+;;;###autoload
+(defun snsync-diff ()
+  "Show the differences between the current buffer and the remote record."
+  (interactive)
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
+  (let ((diff-buffer (get-buffer-create snsync--temp-buffer-name))
+        (table snsync-current-table)
+        (field snsync-current-field)
+        (sys-id snsync-current-sys-id))
+    (snsync--load-data-as-buffer table
+                                 field
+                                 sys-id
+                                 nil
+                                 diff-buffer)
+    (funcall snsync-diff-function (current-buffer) diff-buffer)))
+
 
 ;;; Conflict Detection
 
