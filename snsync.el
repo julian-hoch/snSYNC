@@ -164,7 +164,9 @@ the relevant data as an alist, with keys 'display-value and 'content."
   "Load a record from TABLE with SYS-ID and save the value of FIELD as a
 new buffer.  If the buffer already exists, it content will be
 overwritten.  If BUFFER is provided, use that buffer instead of creating
-a new one.  Return the buffer containing the data."
+a new one (resp. looking up existing one by generated name).
+
+Return the buffer containing the data."
   (unless data
     (setq data (snsync--load-data table field sys-id)))
   (let* ((content (string-trim (alist-get 'content data)))
@@ -323,8 +325,10 @@ specified, use the current buffer."
     (error "This buffer is not associated with a ServiceNow record."))
   (let ((table snsync-current-table)
         (field snsync-current-field)
-        (sys-id snsync-current-sys-id))
-    (snsync--load-data-as-buffer table field sys-id nil (current-buffer))))
+        (sys-id snsync-current-sys-id)
+        (tmp-buffer (get-buffer-create snsync--temp-buffer-name)))
+    (snsync--load-data-as-buffer table field sys-id nil tmp-buffer)
+    (replace-buffer-contents tmp-buffer)))
   
 ;;; Saving to the Instance
 
@@ -344,20 +348,21 @@ specified, use the current buffer."
   (interactive)
   (when buffer
     (switch-to-buffer buffer))
-  (save-restriction
-    (widen)
-    (when snsync-strip-file-vars
-      (snsync-narrow-to-content))
-    (let* ((sys-id snsync-current-sys-id)
-           (table snsync-current-table)
-           (field snsync-current-field)
-           (content (buffer-substring-no-properties (point-min) (point-max)))
-           (fields (list (cons field content))))
-      (sn-update-record table sys-id fields)
-      (snsync--set-content-hash)
-      (when snsync-file-locals
-        (snsync--set-file-local-variables))
-      (message "Uploaded %s.%s:%s" table field sys-id))))
+  (save-excursion
+    (save-restriction
+      (widen)
+      (when snsync-strip-file-vars
+        (snsync-narrow-to-content))
+      (let* ((sys-id snsync-current-sys-id)
+             (table snsync-current-table)
+             (field snsync-current-field)
+             (content (buffer-substring-no-properties (point-min) (point-max)))
+             (fields (list (cons field content))))
+        (sn-update-record table sys-id fields)
+        (snsync--set-content-hash)
+        (when snsync-file-locals
+          (snsync--set-file-local-variables))
+        (message "Uploaded %s.%s:%s" table field sys-id)))))
 
 ;;;; Buffer Misc Commands
 
