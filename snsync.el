@@ -634,6 +634,9 @@ provided, use the default query for the field."
 (defvar-local snsync-pre-merge-window-config nil
   "Window configuration before merging buffers.  Used to restore the window layout after merging.")
 
+(defvar-local snsync--merge-point-marker nil
+  "Marker to remember the point in the buffer where the merge was initiated.")
+
 (defun snsync--merge-buffers ()
   "Merge the current buffer with the temporary buffer containing the remote record's content."
   (unless (snsync--buffer-connected-p)
@@ -644,6 +647,7 @@ provided, use the default query for the field."
       (error "Temporary buffer for diffing does not exist."))
     (when snsync-save-merge-window-config
       (setq-local snsync-pre-merge-window-config (current-window-configuration)))
+    (setq-local snsync--merge-point-marker (point-marker))
     (snsync-narrow-to-content)
     (ediff-merge-buffers (current-buffer) diff-buffer)))
 
@@ -664,23 +668,24 @@ Runs when ediff merge finishes (if hook is set up)."
     (set-buffer local-buffer)
     (setq buffer-read-only nil)
     (when is-connected
+      ;; TODO ideally we would check if the result buffer still has conflict markers
       (if (not (yes-or-no-p "Apply merges?"))
           (progn
             (when snsync-save-merge-window-config
               (set-window-configuration snsync-pre-merge-window-config))
+            (goto-char snsync--merge-point-marker)
+            (set-marker snsync--merge-point-marker nil)
             (message "Merges not applied."))
-        ;; TODO ideally we would check if the result buffer still has conflict markers
-        (set-buffer merged-buffer)
-        (setq result (buffer-substring-no-properties (point-min) (point-max)))
         (set-buffer local-buffer)
-        (erase-buffer)
-        (insert result)
+        (replace-buffer-contents merged-buffer)
         (when snsync-file-locals
           (snsync--set-file-local-variables))
         (when snsync-auto-narrow-to-content
           (snsync-narrow-to-content))
         (when snsync-save-merge-window-config
           (set-window-configuration snsync-pre-merge-window-config))
+        (goto-char snsync--merge-point-marker)
+        (set-marker snsync--merge-point-marker nil)
         (when snsync-auto-upload-after-merge
           (snsync-upload-buffer))
         (message "Merges applied.")))))
