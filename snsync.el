@@ -337,6 +337,11 @@ specified, use the current buffer."
   :type 'boolean
   :group 'snsync)
 
+(defcustom snsync-autosave-on-upload t
+  "If non-nil, automatically save visiting buffers when uploading if is is unmodified."
+  :type 'boolean
+  :group 'snsync)
+
 (defvar snsync-local-var-regex
   "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:\\(\n\\|.\\)+"
   "Regular expression to match file-local variables in the buffer.")
@@ -348,6 +353,8 @@ specified, use the current buffer."
   (interactive)
   (when buffer
     (switch-to-buffer buffer))
+  (unless (snsync--buffer-connected-p)
+    (error "This buffer is not associated with a ServiceNow record."))
   (save-excursion
     (save-restriction
       (widen)
@@ -357,11 +364,16 @@ specified, use the current buffer."
              (table snsync-current-table)
              (field snsync-current-field)
              (content (buffer-substring-no-properties (point-min) (point-max)))
-             (fields (list (cons field content))))
+             (fields (list (cons field content)))
+             (unmodified (not (buffer-modified-p))))
         (sn-update-record table sys-id fields)
         (snsync--set-content-hash)
         (when snsync-file-locals
           (snsync--set-file-local-variables))
+        (when (and snsync-autosave-on-upload
+                  (buffer-file-name)
+                  unmodified)
+          (save-buffer))
         (message "Uploaded %s.%s:%s" table field sys-id)))))
 
 ;;;; Buffer Misc Commands
