@@ -1,24 +1,33 @@
-
 # Table of Contents
 
-1.  [Quick Start](#orgc9111a8)
+1.  [Quick Start](#org9db3690)
+2.  [Issues and Limitations](#org99b1f0c)
 
-This package allows ServiceNow developers edit their Script Includes, UI Scripts (and other artifacts) directly in Emacs.  It provides a configurable way to synchronize ServiceNow records with local files.
+This package allows ServiceNow developers edit their Script Includes, UI Scripts, and other artifacts, directly in Emacs. It provides a configurable way to synchronize ServiceNow records with local files and buffers.
 
 
-<a id="orgc9111a8"></a>
+<a id="org9db3690"></a>
 
 # Quick Start
 
-This package depends on [ServiceNow.el](https://github.com/julian-hoch/ServiceNow.el), so please install and configure that first.  Then, install this package, e.g. with:
+This package depends on [ServiceNow.el](https://github.com/julian-hoch/ServiceNow.el), so please install and configure that first. Make sure you can log in to the instance from Emacs. Then, install this package. If you use straight, you can use the following snippet. Otherwise adapt as needed.
 
-    (use-package snsync
-      :straight (:host github :repo "julian-hoch/snsync"))
+```emacs-lisp
+(use-package snsync
+  :straight (:host github :repo "julian-hoch/snsync"))
+```
 
-To download a Script Include or UI Script in a (temporary) buffer, use command `snsync-download-record`.
-To save your changes back to the instance, use `snsync-upload-buffer`.  To update the buffer with the latest data from the instance, use `snsync-reload-buffer`.
+To download a Script Include or UI Script in a (temporary) buffer, use command `snsync-download-buffer`. To save your changes back to the instance, use `snsync-upload-buffer`. To update the buffer with the latest data from the instance, use `snsync-reload-buffer`.
 
 **NOTE**: These actions do NOT check for potential conflicts and will happily overwrite any local changes you made.
 
-If you want to work with persistent files, you can use the command `snsync-get-file` instead.  This will save the data to a file in a local directory, and set some file-local variables so you can later continue working with it.
+If you want to work with persistent files, you can use the command `snsync-get-file` instead. This will save the data to a file in a local directory, and set some file-local variables so you can later continue working with it.
 
+There is also a “do what I mean” command, `snsync-dwim`, which will try to guess what you want to do based on the current context. It will either upload your changes, if the source is not modified in the instance, or download the latest data from the instance, if it is only modified there. If both are modified, it will ask you what to do, and allow you to resolve the conflict (using `ediff`).
+
+
+<a id="org99b1f0c"></a>
+
+# Issues and Limitations
+
+Content is trimmed of leading and trailing whitespace. This could be improved. It helps with narrowing and content hashing, but it also means that adding space at the start or end of a record will not be considered a meaningful change, and whitespace will be removed on the next sync.

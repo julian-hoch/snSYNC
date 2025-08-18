@@ -31,8 +31,6 @@
 
 (require 'servicenow)
 
-
-
 ;;; Customization
 
 (defgroup snsync ()
@@ -576,6 +574,7 @@ provided, use the default query for the field."
                                  sys-id
                                  nil
                                  diff-buffer)
+    (snsync-narrow-to-content)
     (funcall snsync-diff-function (current-buffer) diff-buffer)))
 
 
@@ -702,6 +701,8 @@ Runs when ediff merge finishes (if hook is set up)."
           (snsync-upload-buffer))
         (message "Merges applied.")))))
 
+(add-hook 'ediff-quit-merge-hook 'snsync--apply-merge)
+
 (defcustom snsync-diff-function 'diff-buffers
   "Function to use for diffing buffers.  Default is `diff-buffers'."
   :type 'function
@@ -751,7 +752,6 @@ resolve the conflict? "
      (t
       (error "Unknown resolution option: %s" resolution)))))
 
-
 ;;; Minor Mode
 
 ;;;###autoload
@@ -767,7 +767,6 @@ resolve the conflict? "
 
 (put 'snsync-mode 'safe-local-variable
      (lambda (x) (or (null x) (eq x 1))))
-
 
 (provide 'snsync)
 
