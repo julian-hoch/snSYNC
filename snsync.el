@@ -49,9 +49,23 @@
          :scope "sys_scope.scope"
          :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
          :mode js2-mode))
+    (("sys_script" . "script")
+     . ( :label "Business Rule"
+         :name-field "name"
+         :extension "js"
+         :scope "sys_scope.scope"
+         :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
+         :mode js2-mode))
     (("sys_ui_macro" . "xml")
      . ( :label "UI Macro"
          :name-field ("name" "scoped_name")
+         :extension "xml"
+         :scope "sys_scope.scope"
+         :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
+         :mode nxml-mode))
+    (("sys_ui_page" . "html")
+     . ( :label "UI Page"
+         :name-field ("name")
          :extension "xml"
          :scope "sys_scope.scope"
          :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
@@ -121,24 +135,35 @@ hashtable."
   (let ((metadata (snsync--get-field-metadata table field)))
     (plist-get metadata :scope)))
 
+(defun snsync--get-extra-fields (table field)
+  "Get additional fields that should be loaded for the given TABLE and FIELD."
+  (let ((metadata (snsync--get-field-metadata table field)))
+    (plist-get metadata :load-fields)))
+
 (defun snsync--get-main-fields (table field)
   "Returns all the relevant fields for a certain TABLE and FIELD combination."
-  (let ((name-field (snsync--get-name-field table field))
-        (scope (snsync--get-field-scope table field)))
-    (-flatten
-     (if scope
-         (list field name-field scope)
-       (list field name-field)))))
-
+  (let* ((name-getter (snsync--get-name-field table field))
+         (name-field (unless (functionp name-getter)
+                       name-getter))
+         (extra-fields (snsync--get-extra-fields table field))
+	 (scope (snsync--get-field-scope table field))
+         (all (list field name-field extra-fields scope)))
+    (-flatten (remove nil all))))
 
 ;;; Loading from the Instance
+
+(defun snsync--get-display-value (table field data)
+  "Get the display value for TABLE and FIELD from DATA."
+  (let ((name-field (snsync--get-name-field table field)))
+    (if (functionp name-field)
+        (funcall name-field data)
+      (sn-get-result-field data name-field))))
 
 (defun snsync--construct-record-data (table field sys-id data)
   "Construct a record data alist for TABLE, FIELD, SYS-ID and DATA."
   (let* ((scope-field (snsync--get-field-scope table field))
-         (name-field (snsync--get-name-field table field))
          (scope-value (sn-get-result-field data scope-field))
-         (display-value (sn-get-result-field data name-field))
+         (display-value (snsync--get-display-value table field data))
          (content (sn-get-result-field data field)))
     (list (cons 'display-value display-value)
           (cons 'scope scope-value)
@@ -241,20 +266,22 @@ If TABLE and FIELD are not provided, prompt the user to select them."
   (let* ((name-field (snsync--get-name-field table field))
          (label (or (snsync--get-field-label table field)
                     table))
+         (fields (cons "sys_id" (snsync--get-main-fields table field)))
+         (formatter (or (and (functionp name-field) name-field)
+                        (lambda (record)
+                              (format "%s [%s]"
+                                      (sn-get-result-field record name-field)
+                                      (gethash "sys_scope.scope" record)))))
+         (valueparser (lambda (record)
+                              (list :table table
+                                    :field field
+                                    :sys-id (gethash "sys_id" record))))
          (query (snsync--get-field-query table field)))
     (sn--complete-reference table
                             query
-                            (-flatten `("sys_id" "sys_scope.scope" ,name-field)) 
-                            ;; formatter
-                            (lambda (record)
-                              (format "%s [%s]"
-                                      (sn-get-result-field record name-field)
-                                      (gethash "sys_scope.scope" record)))
-                            ;; valueparser
-                            (lambda (record)
-                              (list :table table
-                                    :field field
-                                    :sys-id (gethash "sys_id" record)))
+                            fields
+                            formatter
+                            valueparser
                             (format "Select %s:" label))))
 
 ;;; Managing Buffers
@@ -336,7 +363,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defcustom snsync-autosave-on-upload t
-  "If non-nil, automatically save visiting buffers when uploading if is is unmodified."
+  "If non-nil, automatically save visiting buffers when uploading (if it is unmodified), and after merging."
   :type 'boolean
   :group 'snsync)
 
@@ -473,7 +500,6 @@ indicate subdirectories."
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
   (setq-local snsync-file-locals t)
-  (add-file-local-variable 'snsync-mode 1)
   (add-file-local-variable 'snsync-file-locals t)
   (add-file-local-variable 'snsync-current-table snsync-current-table)
   (add-file-local-variable 'snsync-current-field snsync-current-field)
@@ -481,7 +507,9 @@ indicate subdirectories."
   (add-file-local-variable 'snsync-current-scope snsync-current-scope)
   (add-file-local-variable 'snsync-current-display-value snsync-current-display-value)
   (add-file-local-variable 'snsync-current-extension snsync-current-extension)
-  (add-file-local-variable 'snsync-content-hash snsync-content-hash))
+  (add-file-local-variable 'snsync-content-hash snsync-content-hash)
+  (delete-file-local-variable 'eval) 	 
+  (add-file-local-variable 'eval '(snsync-mode)))
 
 ;;;###autoload
 (defun snsync-get-file (&optional table field sys-id)
@@ -568,14 +596,20 @@ provided, use the default query for the field."
   (let ((diff-buffer (get-buffer-create snsync--temp-buffer-name))
         (table snsync-current-table)
         (field snsync-current-field)
-        (sys-id snsync-current-sys-id))
+        (sys-id snsync-current-sys-id)
+        (diff-entire-buffers nil))
     (snsync--load-data-as-buffer table
                                  field
                                  sys-id
                                  nil
                                  diff-buffer)
-    (snsync-narrow-to-content)
-    (funcall snsync-diff-function (current-buffer) diff-buffer)))
+    (when snsync-save-diff-merge-window-config
+      (setq-local snsync-pre-diff-merge-window-config (current-window-configuration)))
+    (setq-local snsync--diff-merge-point-marker (point-marker))
+    (save-restriction
+      (widen)
+      (snsync-narrow-to-content)
+      (funcall snsync-diff-function (current-buffer) diff-buffer))))
 
 
 ;;; Conflict Detection
@@ -632,8 +666,8 @@ provided, use the default query for the field."
 
 ;;; Conflict Resolution
 
-(defcustom snsync-save-merge-window-config t
-  "If non-nil, save the window configuration before merging buffers."
+(defcustom snsync-save-diff-merge-window-config t
+  "If non-nil, save the window configuration before diffing or merging buffers."
   :type 'boolean
   :group 'snsync)
 
@@ -642,11 +676,11 @@ provided, use the default query for the field."
   :type 'boolean
   :group 'snsync)
 
-(defvar-local snsync-pre-merge-window-config nil
-  "Window configuration before merging buffers.  Used to restore the window layout after merging.")
+(defvar-local snsync-pre-diff-merge-window-config nil
+  "Window configuration before diffing / merging buffers.  Used to restore the window layout after merging.")
 
-(defvar-local snsync--merge-point-marker nil
-  "Marker to remember the point in the buffer where the merge was initiated.")
+(defvar-local snsync--diff-merge-point-marker nil
+  "Marker to remember the point in the buffer where the diff / merge was initiated.")
 
 (defun snsync--merge-buffers ()
   "Merge the current buffer with the temporary buffer containing the remote record's content."
@@ -656,9 +690,9 @@ provided, use the default query for the field."
         (diff-buffer (get-buffer snsync--temp-buffer-name)))
     (unless diff-buffer
       (error "Temporary buffer for diffing does not exist."))
-    (when snsync-save-merge-window-config
-      (setq-local snsync-pre-merge-window-config (current-window-configuration)))
-    (setq-local snsync--merge-point-marker (point-marker))
+    (when snsync-save-diff-merge-window-config
+      (setq-local snsync-pre-diff-merge-window-config (current-window-configuration)))
+    (setq-local snsync--diff-merge-point-marker (point-marker))
     (snsync-narrow-to-content)
     (ediff-merge-buffers (current-buffer) diff-buffer)))
 
@@ -672,7 +706,7 @@ Runs when ediff merge finishes (if hook is set up)."
         (is-connected
          (with-current-buffer ediff-buffer-A (snsync--buffer-connected-p)))
         (previous-window-config
-         (with-current-buffer ediff-buffer-A snsync-pre-merge-window-config))
+         (with-current-buffer ediff-buffer-A snsync-pre-diff-merge-window-config))
         (result))
     (set-buffer remote-buffer)
     (setq buffer-read-only nil)
@@ -681,30 +715,36 @@ Runs when ediff merge finishes (if hook is set up)."
     (when is-connected
       ;; TODO ideally we would check if the result buffer still has conflict markers
       (if (not (yes-or-no-p "Apply merges?"))
-          (progn
-            (when snsync-save-merge-window-config
-              (set-window-configuration snsync-pre-merge-window-config))
-            (goto-char snsync--merge-point-marker)
-            (set-marker snsync--merge-point-marker nil)
-            (message "Merges not applied."))
+          (message "Merges not applied.")
         (set-buffer local-buffer)
         (replace-buffer-contents merged-buffer)
         (when snsync-file-locals
           (snsync--set-file-local-variables))
         (when snsync-auto-narrow-to-content
           (snsync-narrow-to-content))
-        (when snsync-save-merge-window-config
-          (set-window-configuration snsync-pre-merge-window-config))
-        (goto-char snsync--merge-point-marker)
-        (set-marker snsync--merge-point-marker nil)
         (when snsync-auto-upload-after-merge
+          (when (and snsync-autosave-on-upload
+                     (buffer-file-name))
+            (save-buffer))
           (snsync-upload-buffer))
         (message "Merges applied.")))))
 
 (add-hook 'ediff-quit-merge-hook 'snsync--apply-merge)
 
+(defun snsync--ediff-quit-handler ()
+  "Hook to run when ediff is quit.  Restores the window configuration and point."
+  (when ediff-buffer-A
+    (set-buffer ediff-buffer-A))
+  (when snsync-save-diff-merge-window-config
+    (set-window-configuration snsync-pre-diff-merge-window-config)
+    (goto-char snsync--diff-merge-point-marker)
+    (set-marker snsync--diff-merge-point-marker nil)
+    (message "Ediff quit.  Restoring window configuration.")))
+
+(add-hook 'ediff-quit-hook 'snsync--ediff-quit-handler)
+
 (defcustom snsync-diff-function 'diff-buffers
-  "Function to use for diffing buffers.  Default is `diff-buffers'."
+  "Function to use for diffing buffers.  Default is `diff-buffers'.  Alternatively, you can use `ediff-buffers' for a more interactive diffing experience."
   :type 'function
   :group 'snsync)
 
@@ -713,10 +753,17 @@ Runs when ediff merge finishes (if hook is set up)."
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
   (let* ((snsync--temp-buffer-name (snsync--temp-remote-buffer-name))
-         (diff-buffer (get-buffer snsync--temp-buffer-name)))
+         (diff-buffer (get-buffer snsync--temp-buffer-name))
+         (diff-entire-buffers nil))
     (unless diff-buffer
       (error "Temporary buffer for diffing does not exist."))
-    (funcall snsync-diff-function (current-buffer) diff-buffer)))
+    (when snsync-save-diff-merge-window-config
+      (setq-local snsync-pre-diff-merge-window-config (current-window-configuration)))
+    (setq-local snsync--diff-merge-point-marker (point-marker))
+    (save-restriction
+      (widen)
+      (snsync-narrow-to-content)
+      (funcall snsync-diff-function (current-buffer) diff-buffer))))
 
 (defun snsync--prompt-conflict-resolution ()
   "Prompt the user to resolve a conflict between local and remote changes."
@@ -754,16 +801,20 @@ resolve the conflict? "
 
 ;;; Minor Mode
 
+(defun snsync--auto-narrow ()
+    "Automatically narrow the buffer to the content of the ServiceNow record."
+    (when (and snsync-mode snsync-auto-narrow-to-content)
+        (snsync-narrow-to-content)))
+
 ;;;###autoload
 (define-minor-mode snsync-mode
   "Enable ServiceNow synchronization mode."
   :global nil
   :group 'snsync
   :lighter "snSYNC"
-  :after-hook
-  (when (and snsync-mode snsync-auto-narrow-to-content)
-    (snsync-narrow-to-content))
   :keymap (make-sparse-keymap))
+
+(add-hook 'snsync-mode-hook 'snsync--auto-narrow)
 
 (put 'snsync-mode 'safe-local-variable
      (lambda (x) (or (null x) (eq x 1))))
