@@ -177,11 +177,6 @@ the relevant data as an alist, with keys 'display-value and 'content."
          (data (sn-get-record-json table sys-id fields)))
     (snsync--construct-record-data table field sys-id data)))
 
-(defun snsync--fix-line-endings ()
-  "Fix line endings in the current buffer, replacing CRLF with LF."
-  (goto-char (point-min))
-  (while (re-search-forward "\r\n" nil t)
-    (replace-match "\n" nil t)))
          
 (defun snsync--load-data-as-buffer (table field sys-id &optional data buffer)
   "Load a record from TABLE with SYS-ID and save the value of FIELD as a
@@ -206,8 +201,8 @@ Return the buffer containing the data."
       (save-excursion
         (erase-buffer)
         (insert content)
-        (snsync--fix-line-endings)
         (funcall (snsync--get-field-mode table field))
+        (run-hooks 'snsync-download-hook)
         (setq-local snsync-current-table table
                     snsync-current-scope scope
                     snsync-current-field field
@@ -221,6 +216,22 @@ Return the buffer containing the data."
         (when snsync-auto-narrow-to-content
           (snsync-narrow-to-content))))
     buffer))
+
+;;;; Cleaning Up
+
+(defcustom snsync-download-hook nil
+  "Hook run after downloading a record into a buffer."
+  :type 'hook
+  :group 'snsync)
+
+(defun snsync--fix-line-endings ()
+  "Fix line endings in the current buffer, replacing CRLF with LF."
+  (goto-char (point-min))
+  (while (re-search-forward "\r\n" nil t)
+    (replace-match "\n" nil t)))
+
+;; Usually, we want to fix line endings FIRST
+(add-hook 'snsync-download-hook #'snsync--fix-line-endings -50)
 
 ;;; User Interface Helpers
 
@@ -357,11 +368,6 @@ specified, use the current buffer."
   
 ;;; Saving to the Instance
 
-(defcustom snsync-strip-file-vars t
-  "If non-nil, strip file-local variables before uploading."
-  :type 'boolean
-  :group 'snsync)
-
 (defcustom snsync-autosave-on-upload t
   "If non-nil, automatically save visiting buffers when uploading (if it is unmodified), and after merging."
   :type 'boolean
@@ -383,8 +389,7 @@ specified, use the current buffer."
   (save-excursion
     (save-restriction
       (widen)
-      (when snsync-strip-file-vars
-        (snsync-narrow-to-content))
+      (run-hooks 'snsync-upload-hook)
       (let* ((sys-id snsync-current-sys-id)
              (table snsync-current-table)
              (field snsync-current-field)
@@ -400,6 +405,28 @@ specified, use the current buffer."
                   unmodified)
           (save-buffer))
         (message "Uploaded %s.%s:%s" table field sys-id)))))
+
+;;;; Cleaning Up
+
+
+(defcustom snsync-upload-hook nil
+  "Hook run before uploading a record from a buffer."
+  :type 'hook
+  :group 'snsync)
+
+(defcustom snsync-strip-file-vars t
+  "If non-nil, strip file-local variables before uploading."
+  :type 'boolean
+  :group 'snsync)
+
+(defun snsync-strip-file-vars ()
+  "Strip file-local variables from the current buffer by narrowing."
+  (when snsync-strip-file-vars
+    (snsync-narrow-to-content)))
+
+;; Usually, we strip file vars BEFORE other activities
+(add-hook 'snsync-upload-hook #'snsync-strip-file-vars -50)
+
 
 ;;;; Buffer Misc Commands
 
