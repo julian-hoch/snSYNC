@@ -23,6 +23,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
 ;;; Commentary:
 
 ;; This package provides functionality to synchronize ServiceNow artifacts with Emacs buffers.
@@ -48,14 +49,15 @@
          :extension "js"
          :scope "sys_scope.scope"
          :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
-         :mode js2-mode))
+         :sync "sys_created_by=javascript:gs.getUserName()"
+         :mode js-mode))
     (("sys_script" . "script")
      . ( :label "Business Rule"
          :name-field "name"
          :extension "js"
          :scope "sys_scope.scope"
          :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
-         :mode js2-mode))
+         :mode js-mode))
     (("sys_ui_macro" . "xml")
      . ( :label "UI Macro"
          :name-field ("name" "scoped_name")
@@ -76,7 +78,7 @@
          :extension "js"
          :scope "sys_scope.scope"
          :query "sys_policy!=protected^ORsys_policy=^sys_scope=global"
-         :mode js2-mode)))
+         :mode js-mode)))
   "Metadata for ServiceNow fields.  Name-field is the field that should be
 used to display the name of the record.  Can be a field name, a list of
 field names, or a function that returns the content given the result
@@ -122,6 +124,11 @@ hashtable."
   "Get the query for TABLE and FIELD."
   (let ((metadata (snsync--get-field-metadata table field)))
     (plist-get metadata :query)))
+
+(defun snsync--get-field-sync-query (table field)
+  "Get the query for TABLE and FIELD."
+  (let ((metadata (snsync--get-field-metadata table field)))
+    (plist-get metadata :sync)))
 
 (defun snsync--get-field-extension (table field)
   "Get the file extension for TABLE and FIELD."
@@ -196,7 +203,7 @@ Return the buffer containing the data."
          (use-file-locals nil))
     (unless content
       (error "No content found for %s.%s:%s" table field sys-id))
-    (setq use-file-locals snsync-file-locals)
+    (setq use-file-locals snsync-add-file-vars)
     (with-current-buffer buffer
       (save-excursion
         (erase-buffer)
@@ -318,8 +325,8 @@ If TABLE and FIELD are not provided, prompt the user to select them."
 (defvar-local snsync-current-extension nil
   "The file extension to use for the current buffer.")
 
-(defvar-local snsync-file-locals nil
-  "Whether the current buffer uses file local variables")
+;; (defvar-local snsync-file-locals nil
+  ;; "Whether the current buffer uses file local variables")
 
 ;;;; Buffer Helpers
 
@@ -374,7 +381,7 @@ specified, use the current buffer."
   :group 'snsync)
 
 (defvar snsync-local-var-regex
-  "[[:space:]\n]*\\(<!--\\|//\\) Local Variables:\\(\n\\|.\\)+"
+  "[[:space:]\n]*\\(<!--\\|;;\\|//\\) Local Variables:\\(\n\\|.\\)+"
   "Regular expression to match file-local variables in the buffer.")
 
 ;;;###autoload
@@ -398,7 +405,7 @@ specified, use the current buffer."
              (unmodified (not (buffer-modified-p))))
         (sn-update-record table sys-id fields)
         (snsync--set-content-hash)
-        (when snsync-file-locals
+        (when snsync-add-file-vars
           (snsync--set-file-local-variables))
         (when (and snsync-autosave-on-upload
                   (buffer-file-name)
@@ -483,8 +490,6 @@ specified, use the current buffer."
      (lambda (x) (or (null x) (stringp x))))
 (put 'snsync-current-extension 'safe-local-variable
         (lambda (x) (or (null x) (stringp x))))
-(put 'snsync-file-locals 'safe-local-variable
-     (lambda (x) (or (null x) (booleanp x))))
 
 (defun snsync--construct-file-name (scope table field sys-id display-value extension)
   "Generate a file name for the file representing the data in SCOPE / TABLE / FIELD, for the given FIELD
@@ -526,8 +531,6 @@ indicate subdirectories."
   (interactive)
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
-  (setq-local snsync-file-locals t)
-  (add-file-local-variable 'snsync-file-locals t)
   (add-file-local-variable 'snsync-current-table snsync-current-table)
   (add-file-local-variable 'snsync-current-field snsync-current-field)
   (add-file-local-variable 'snsync-current-sys-id snsync-current-sys-id)
@@ -560,8 +563,9 @@ provided, use the default query for the field."
     (let ((table-field (snsync--prompt-for-table-field)))
       (setq table (car table-field)
             field (cdr table-field))))
-  (unless query
-    (setq query (snsync--get-field-query table field)))
+  (setq query (or query
+                  (snsync--get-field-sync-query table field)
+                  (snsync--get-field-query table field)))
   (message "Synchronizing all records of %s.%s with query: %s"
                   table field query)
   (let* ((fields (cons "sys_id" (snsync--get-main-fields table field)))
@@ -572,13 +576,12 @@ provided, use the default query for the field."
                                                                record))
                               records-flat)))
     (dolist (record record-list)
+      (with-current-buffer
       (snsync--load-data-as-buffer table
                                    field
                                    (alist-get 'sys-id record)
                                    record)
-      (when snsync-add-file-vars
-        (snsync--set-file-local-variables))
-      (snsync-save-buffer-to-file))))
+      (snsync-save-buffer-to-file)))))
 
 
 ;;;###autoload
@@ -745,7 +748,7 @@ Runs when ediff merge finishes (if hook is set up)."
           (message "Merges not applied.")
         (set-buffer local-buffer)
         (replace-buffer-contents merged-buffer)
-        (when snsync-file-locals
+        (when snsync-add-file-vars
           (snsync--set-file-local-variables))
         (when snsync-auto-narrow-to-content
           (snsync-narrow-to-content))
