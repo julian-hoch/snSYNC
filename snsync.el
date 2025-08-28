@@ -369,9 +369,12 @@ specified, use the current buffer."
   (let ((table snsync-current-table)
         (field snsync-current-field)
         (sys-id snsync-current-sys-id)
-        (tmp-buffer (get-buffer-create snsync--temp-buffer-name)))
+        (tmp-buffer (get-buffer-create snsync--temp-buffer-name))
+        (snsync-auto-narrow-to-content nil))
     (snsync--load-data-as-buffer table field sys-id nil tmp-buffer)
-    (replace-buffer-contents tmp-buffer)))
+    (replace-buffer-contents tmp-buffer))
+  (when snsync-auto-narrow-to-content
+    (snsync-narrow-to-content)))
   
 ;;; Saving to the Instance
 
