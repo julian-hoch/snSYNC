@@ -43,7 +43,7 @@
 ;; TODO buffer naming convention should be set here too
 ;; TODO potentially allow saved filters instead of fixed queries
 (defcustom snsync-fields
-  '((("sys_script_include" . "script") 
+  '((("sys_script_include" . "script")
      . ( :label "Script Include"
          :name-field "name"
          :extension "js"
@@ -85,15 +85,15 @@ field names, or a function that returns the content given the result
 hashtable."
   :group 'snsync
   :type '(alist :key-type (cons string string)
-		:value-type (plist
+                :value-type (plist
                              :options
-                                   ((:label string)
-                                    (:name-field (choice (string :tag "Primary name field")
-                                                         (repeat string)))
-                                    (:extension string)
-                                    (:scope string)
-                                    (:query string)
-                                    (:mode symbol)))))
+                             ((:label string)
+                              (:name-field (choice (string :tag "Primary name field")
+                                                   (repeat string)))
+                              (:extension string)
+                              (:scope string)
+                              (:query string)
+                              (:mode symbol)))))
 
 (defun snsync--get-field-metadata (table field)
   "Get metadata for TABLE and FIELD."
@@ -153,7 +153,7 @@ hashtable."
          (name-field (unless (functionp name-getter)
                        name-getter))
          (extra-fields (snsync--get-extra-fields table field))
-	 (scope (snsync--get-field-scope table field))
+         (scope (snsync--get-field-scope table field))
          (all (list field name-field extra-fields scope)))
     (-flatten (remove nil all))))
 
@@ -184,7 +184,7 @@ the relevant data as an alist, with keys 'display-value and 'content."
          (data (sn-get-record-json table sys-id fields)))
     (snsync--construct-record-data table field sys-id data)))
 
-         
+
 (defun snsync--load-data-as-buffer (table field sys-id &optional data buffer)
   "Load a record from TABLE with SYS-ID and save the value of FIELD as a
 new buffer.  If the buffer already exists, it content will be
@@ -256,8 +256,8 @@ excluding file-local variables."
   (save-excursion
     (goto-char (point-min))
     (when (re-search-forward snsync-local-var-regex nil t)
-    (narrow-to-region (point-min) (match-beginning 0)))))
-   
+      (narrow-to-region (point-min) (match-beginning 0)))))
+
 
 (defun snsync--prompt-for-table-field ()
   "Prompt the user to select a table and field.  Returns a cons cell
@@ -287,13 +287,13 @@ If TABLE and FIELD are not provided, prompt the user to select them."
          (fields (cons "sys_id" (snsync--get-main-fields table field)))
          (formatter (or (and (functionp name-field) name-field)
                         (lambda (record)
-                              (format "%s [%s]"
-                                      (sn-get-result-field record name-field)
-                                      (gethash "sys_scope.scope" record)))))
+                          (format "%s [%s]"
+                                  (sn-get-result-field record name-field)
+                                  (gethash "sys_scope.scope" record)))))
          (valueparser (lambda (record)
-                              (list :table table
-                                    :field field
-                                    :sys-id (gethash "sys_id" record))))
+                        (list :table table
+                              :field field
+                              :sys-id (gethash "sys_id" record))))
          (query (snsync--get-field-query table field)))
     (sn--complete-reference table
                             query
@@ -326,7 +326,7 @@ If TABLE and FIELD are not provided, prompt the user to select them."
   "The file extension to use for the current buffer.")
 
 ;; (defvar-local snsync-file-locals nil
-  ;; "Whether the current buffer uses file local variables")
+;; "Whether the current buffer uses file local variables")
 
 ;;;; Buffer Helpers
 
@@ -372,7 +372,7 @@ specified, use the current buffer."
         (tmp-buffer (get-buffer-create snsync--temp-buffer-name)))
     (snsync--load-data-as-buffer table field sys-id nil tmp-buffer)
     (replace-buffer-contents tmp-buffer)))
-  
+
 ;;; Saving to the Instance
 
 (defcustom snsync-autosave-on-upload t
@@ -408,8 +408,8 @@ specified, use the current buffer."
         (when snsync-add-file-vars
           (snsync--set-file-local-variables))
         (when (and snsync-autosave-on-upload
-                  (buffer-file-name)
-                  unmodified)
+                   (buffer-file-name)
+                   unmodified)
           (save-buffer))
         (message "Uploaded %s.%s:%s" table field sys-id)))))
 
@@ -489,7 +489,7 @@ specified, use the current buffer."
 (put 'snsync-current-display-value 'safe-local-variable
      (lambda (x) (or (null x) (stringp x))))
 (put 'snsync-current-extension 'safe-local-variable
-        (lambda (x) (or (null x) (stringp x))))
+     (lambda (x) (or (null x) (stringp x))))
 
 (defun snsync--construct-file-name (scope table field sys-id display-value extension)
   "Generate a file name for the file representing the data in SCOPE / TABLE / FIELD, for the given FIELD
@@ -513,7 +513,7 @@ indicate subdirectories."
                                  snsync-current-sys-id
                                  snsync-current-display-value
                                  snsync-current-extension)))
-                           
+
 ;;;###autoload
 (defun snsync-save-buffer-to-file ()
   "Save the current buffer to a file in the ServiceNow synchronization directory."
@@ -538,7 +538,7 @@ indicate subdirectories."
   (add-file-local-variable 'snsync-current-display-value snsync-current-display-value)
   (add-file-local-variable 'snsync-current-extension snsync-current-extension)
   (add-file-local-variable 'snsync-content-hash snsync-content-hash)
-  (delete-file-local-variable 'eval) 	 
+  (delete-file-local-variable 'eval)
   (add-file-local-variable 'eval '(snsync-mode)))
 
 ;;;###autoload
@@ -567,7 +567,7 @@ provided, use the default query for the field."
                   (snsync--get-field-sync-query table field)
                   (snsync--get-field-query table field)))
   (message "Synchronizing all records of %s.%s with query: %s"
-                  table field query)
+           table field query)
   (let* ((fields (cons "sys_id" (snsync--get-main-fields table field)))
          (records-flat (sn-get-records-json table query fields))
          (record-list (mapcar (lambda (record)
@@ -577,11 +577,11 @@ provided, use the default query for the field."
                               records-flat)))
     (dolist (record record-list)
       (with-current-buffer
-      (snsync--load-data-as-buffer table
-                                   field
-                                   (alist-get 'sys-id record)
-                                   record)
-      (snsync-save-buffer-to-file)))))
+          (snsync--load-data-as-buffer table
+                                       field
+                                       (alist-get 'sys-id record)
+                                       record)
+        (snsync-save-buffer-to-file)))))
 
 
 ;;;###autoload
@@ -606,16 +606,16 @@ provided, use the default query for the field."
   (let ((locally-changed (snsync--is-locally-modified-p))
         (remote-changed (snsync--is-remote-modified-p)))
     (cond
-        ((and locally-changed remote-changed)
-         (snsync-resolve-conflicts))
-        (locally-changed
-         (snsync-upload-buffer)
-         (message "Local changes uploaded to ServiceNow."))
-        (remote-changed
-         (snsync-reload-buffer)
-         (message "Remote changes downloaded from ServiceNow."))
-        (t
-         (message "No changes detected. Buffer is up to date.")))))
+     ((and locally-changed remote-changed)
+      (snsync-resolve-conflicts))
+     (locally-changed
+      (snsync-upload-buffer)
+      (message "Local changes uploaded to ServiceNow."))
+     (remote-changed
+      (snsync-reload-buffer)
+      (message "Remote changes downloaded from ServiceNow."))
+     (t
+      (message "No changes detected. Buffer is up to date.")))))
 
 ;;;###autoload
 (defun snsync-diff ()
@@ -657,7 +657,7 @@ provided, use the default query for the field."
   (save-restriction
     (widen)
     (snsync-narrow-to-content)
-        (secure-hash 'md5 (current-buffer))))
+    (secure-hash 'md5 (current-buffer))))
 
 (defun snsync--set-content-hash ()
   "Set the content hash of the current buffer to the current content hash."
@@ -685,7 +685,7 @@ provided, use the default query for the field."
 
 (defun snsync--temp-remote-buffer-name ()
   "Create a temporary buffer name for the remote record's content."
-        (format "*%s:REMOTE*" (buffer-name)))
+  (format "*%s:REMOTE*" (buffer-name)))
 
 (defun snsync--is-remote-modified-p ()
   "Check if the remote record has been modified since the last synchronization."
@@ -717,7 +717,7 @@ provided, use the default query for the field."
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
   (let* ((snsync--temp-buffer-name (snsync--temp-remote-buffer-name))
-        (diff-buffer (get-buffer snsync--temp-buffer-name)))
+         (diff-buffer (get-buffer snsync--temp-buffer-name)))
     (unless diff-buffer
       (error "Temporary buffer for diffing does not exist."))
     (when snsync-save-diff-merge-window-config
@@ -729,7 +729,7 @@ provided, use the default query for the field."
 (defun snsync--apply-merge ()
   "Take the output of `ediff-merge-buffers' and apply it to the local
 buffer, then send to the instance.
-Runs when ediff merge finishes (if hook is set up)." 
+Runs when ediff merge finishes (if hook is set up)."
   (let ((local-buffer ediff-buffer-A)
         (remote-buffer ediff-buffer-B)
         (merged-buffer ediff-buffer-C)
@@ -797,15 +797,15 @@ Runs when ediff merge finishes (if hook is set up)."
 
 (defun snsync--prompt-conflict-resolution ()
   "Prompt the user to resolve a conflict between local and remote changes."
- (let ((read-answer-short t)) 
-   (read-answer "Local changes detected.  Remote changes detected.  How do you want to
+  (let ((read-answer-short t))
+    (read-answer "Local changes detected.  Remote changes detected.  How do you want to
 resolve the conflict? "
-                '(("upload" ?\C-u "Upload local changes")
-                  ("download" ?\C-d "Download remote changes")
-                  ("diff" ?d "Diff local and remote changes")
-                  ("merge" ?m "Merge local and remote changes")
-                  ("open" ?o "Open remote record in browser")
-                  ("quit" ?q "Quit without resolving")))))
+                 '(("upload" ?\C-u "Upload local changes")
+                   ("download" ?\C-d "Download remote changes")
+                   ("diff" ?d "Diff local and remote changes")
+                   ("merge" ?m "Merge local and remote changes")
+                   ("open" ?o "Open remote record in browser")
+                   ("quit" ?q "Quit without resolving")))))
 
 (defun snsync-resolve-conflicts ()
   "Resolve a conflict between local and remote changes in the current buffer."
@@ -832,9 +832,9 @@ resolve the conflict? "
 ;;; Minor Mode
 
 (defun snsync--auto-narrow ()
-    "Automatically narrow the buffer to the content of the ServiceNow record."
-    (when (and snsync-mode snsync-auto-narrow-to-content)
-        (snsync-narrow-to-content)))
+  "Automatically narrow the buffer to the content of the ServiceNow record."
+  (when (and snsync-mode snsync-auto-narrow-to-content)
+    (snsync-narrow-to-content)))
 
 ;;;###autoload
 (define-minor-mode snsync-mode
