@@ -369,10 +369,13 @@ specified, use the current buffer."
   (let ((table snsync-current-table)
         (field snsync-current-field)
         (sys-id snsync-current-sys-id)
-        (tmp-buffer (get-buffer-create snsync--temp-buffer-name)))
+        (tmp-buffer (get-buffer-create snsync--temp-buffer-name))
+        (snsync-auto-narrow-to-content nil))
     (snsync--load-data-as-buffer table field sys-id nil tmp-buffer)
-    (replace-buffer-contents tmp-buffer)))
-
+    (replace-buffer-contents tmp-buffer))
+  (when snsync-auto-narrow-to-content
+    (snsync-narrow-to-content)))
+  
 ;;; Saving to the Instance
 
 (defcustom snsync-autosave-on-upload t
@@ -765,11 +768,12 @@ Runs when ediff merge finishes (if hook is set up)."
   "Hook to run when ediff is quit.  Restores the window configuration and point."
   (when ediff-buffer-A
     (set-buffer ediff-buffer-A))
-  (when snsync-save-diff-merge-window-config
-    (set-window-configuration snsync-pre-diff-merge-window-config)
-    (goto-char snsync--diff-merge-point-marker)
-    (set-marker snsync--diff-merge-point-marker nil)
-    (message "Ediff quit.  Restoring window configuration.")))
+  (when (snsync--buffer-connected-p)
+	  (when snsync-save-diff-merge-window-config
+            (set-window-configuration snsync-pre-diff-merge-window-config)
+            (goto-char snsync--diff-merge-point-marker)
+            (set-marker snsync--diff-merge-point-marker nil)
+            (message "Ediff quit.  Restoring window configuration."))))
 
 (add-hook 'ediff-quit-hook 'snsync--ediff-quit-handler)
 
