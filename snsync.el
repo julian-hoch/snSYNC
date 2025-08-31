@@ -835,6 +835,7 @@ resolve the conflict? "
 
 ;;; Minor Mode
 
+;;;###autoload
 (defun snsync--auto-narrow ()
   "Automatically narrow the buffer to the content of the ServiceNow record."
   (when (and snsync-mode snsync-auto-narrow-to-content)
@@ -848,6 +849,7 @@ resolve the conflict? "
   :lighter "snSYNC"
   :keymap (make-sparse-keymap))
 
+;;;###autoload
 (add-hook 'snsync-mode-hook 'snsync--auto-narrow)
 
 (put 'snsync-mode 'safe-local-variable
