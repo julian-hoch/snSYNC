@@ -525,7 +525,8 @@ indicate subdirectories."
       (let ((file-path (snsync--get-buffer-path)))
         (unless file-path
           (error "Cannot determine file path for current buffer."))
-        (write-file file-path)
+        (let ((change-major-mode-with-file-name nil))
+	        (write-file file-path))
         (message "Saved buffer to %s" file-path))
     (error "This buffer is not associated with a ServiceNow record.")))
 
