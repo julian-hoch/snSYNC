@@ -1,12 +1,12 @@
 # Table of Contents
 
-1.  [Quick Start](#org9db3690)
-2.  [Issues and Limitations](#org99b1f0c)
+1.  [Quick Start](#orgb1afbde)
+2.  [Issues and Limitations](#orgc36b9a8)
 
 This package allows ServiceNow developers edit their Script Includes, UI Scripts, and other artifacts, directly in Emacs. It provides a configurable way to synchronize ServiceNow records with local files and buffers.
 
 
-<a id="org9db3690"></a>
+<a id="orgb1afbde"></a>
 
 # Quick Start
 
@@ -26,8 +26,10 @@ If you want to work with persistent files, you can use the command `snsync-get-f
 There is also a “do what I mean” command, `snsync-dwim`, which will try to guess what you want to do based on the current context. It will either upload your changes, if the source is not modified in the instance, or download the latest data from the instance, if it is only modified there. If both are modified, it will ask you what to do, and allow you to resolve the conflict (using `ediff`).
 
 
-<a id="org99b1f0c"></a>
+<a id="orgc36b9a8"></a>
 
 # Issues and Limitations
 
-Content is trimmed of leading and trailing whitespace. This could be improved. It helps with narrowing and content hashing, but it also means that adding space at the start or end of a record will not be considered a meaningful change, and whitespace will be removed on the next sync.
+-   Content is trimmed of leading and trailing whitespace. This could be improved. It helps with narrowing and content hashing, but it also means that adding space at the start or end of a record will not be considered a meaningful change, and whitespace will be removed on the next sync.
+
+-   Currently, we can only retrieve or update existing records. Creating new records directly from Emacs is not yet implemented.
