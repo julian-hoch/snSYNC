@@ -1,12 +1,20 @@
 # Table of Contents
 
-1.  [Quick Start](#orgb1afbde)
-2.  [Issues and Limitations](#orgc36b9a8)
+1.  [Demo](#orgb0ead41)
+2.  [Quick Start](#org819648e)
+3.  [Issues and Limitations](#orgaa5d9aa)
 
 This package allows ServiceNow developers edit their Script Includes, UI Scripts, and other artifacts, directly in Emacs. It provides a configurable way to synchronize ServiceNow records with local files and buffers.
 
 
-<a id="orgb1afbde"></a>
+<a id="orgb0ead41"></a>
+
+# Demo
+
+For a quick demo, see: <https://youtu.be/Boo0oO2fqhA>
+
+
+<a id="org819648e"></a>
 
 # Quick Start
 
@@ -26,7 +34,7 @@ If you want to work with persistent files, you can use the command `snsync-get-f
 There is also a “do what I mean” command, `snsync-dwim`, which will try to guess what you want to do based on the current context. It will either upload your changes, if the source is not modified in the instance, or download the latest data from the instance, if it is only modified there. If both are modified, it will ask you what to do, and allow you to resolve the conflict (using `ediff`).
 
 
-<a id="orgc36b9a8"></a>
+<a id="orgaa5d9aa"></a>
 
 # Issues and Limitations
 
