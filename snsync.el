@@ -372,7 +372,10 @@ specified, use the current buffer."
         (tmp-buffer (get-buffer-create snsync--temp-buffer-name))
         (snsync-auto-narrow-to-content nil))
     (snsync--load-data-as-buffer table field sys-id nil tmp-buffer)
-    (replace-buffer-contents tmp-buffer))
+    (save-restriction
+      (widen)
+      (replace-buffer-contents tmp-buffer)
+      (snsync--set-content-hash)))
   (when snsync-auto-narrow-to-content
     (snsync-narrow-to-content)))
   
@@ -535,15 +538,17 @@ indicate subdirectories."
   (interactive)
   (unless (snsync--buffer-connected-p)
     (error "This buffer is not associated with a ServiceNow record."))
-  (add-file-local-variable 'snsync-current-table snsync-current-table)
-  (add-file-local-variable 'snsync-current-field snsync-current-field)
-  (add-file-local-variable 'snsync-current-sys-id snsync-current-sys-id)
-  (add-file-local-variable 'snsync-current-scope snsync-current-scope)
-  (add-file-local-variable 'snsync-current-display-value snsync-current-display-value)
-  (add-file-local-variable 'snsync-current-extension snsync-current-extension)
-  (add-file-local-variable 'snsync-content-hash snsync-content-hash)
-  (delete-file-local-variable 'eval)
-  (add-file-local-variable 'eval '(snsync-mode)))
+  (save-restriction
+    (widen)
+    (add-file-local-variable 'snsync-current-table snsync-current-table)
+    (add-file-local-variable 'snsync-current-field snsync-current-field)
+    (add-file-local-variable 'snsync-current-sys-id snsync-current-sys-id)
+    (add-file-local-variable 'snsync-current-scope snsync-current-scope)
+    (add-file-local-variable 'snsync-current-display-value snsync-current-display-value)
+    (add-file-local-variable 'snsync-current-extension snsync-current-extension)
+    (add-file-local-variable 'snsync-content-hash snsync-content-hash)
+    (delete-file-local-variable 'eval)
+    (add-file-local-variable 'eval '(snsync-mode))))
 
 ;;;###autoload
 (defun snsync-get-file (&optional table field sys-id)
